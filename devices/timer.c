@@ -29,6 +29,9 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+static void insert_intoSleepingProcces(struct thread *t, int64_t ticks); //funcion de agregacion
+static void awaken(void); // funcion que despierta
+static struct list sleepingProccess; //lista para guardar procesos dormidos
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -37,6 +40,8 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  //Crear lista de procesos dormidos
+  list_init (&sleepingProccess);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -89,11 +94,28 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+ // int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  
+  insert_intoSleepingProcces(thread_current(),ticks);
+  
+  //while (timer_elapsed (start) < ticks) 
+  // thread_yield ();
+}
+
+static void
+insert_intoSleepingProcces(struct thread *t, int64_t toSleep)
+{
+  int64_t start = timer_ticks ();
+  //printf("**%p ticks : %lld , despierta %lld \n",t,start,toSleep);
+  list_push_back(&sleepingProccess,&t->elemUp);
+  t->wakeUpTick  = start + toSleep;
+  //t->wakeUpTick  = start ;
+  int old = intr_set_level ( INTR_OFF );
+  thread_block();
+  intr_set_level ( old );
+  intr_enable();
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -170,8 +192,30 @@ timer_print_stats (void)
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
+  awaken();
   ticks++;
   thread_tick ();
+  
+}
+
+static void
+awaken(){
+  struct list_elem* e = list_begin (&sleepingProccess);
+
+  while(e != list_end(&sleepingProccess)){
+    
+    int64_t time_now = timer_ticks ();
+    struct thread *t = list_entry (e, struct thread, elemUp);
+    //printf("%p ticks : %lld , despierta %lld \n",t,time_now,t->wakeUpTick);
+    if(t->wakeUpTick <=  time_now) //unblock
+    { 
+      thread_unblock(t);
+      e = list_remove (e);
+    }
+    else{
+      e = list_next (e);
+    }
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
