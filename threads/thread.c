@@ -359,10 +359,8 @@ bool compare_priority(const struct list_elem *e1, const struct list_elem *e2, UN
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
-  // printf("prioridad A%d\n", thread_get_priority());
   thread_current()->priority = new_priority;
   // Verificar que sigamos siendo la mayor prioridad
-  // printf("prioridad B%d\n", thread_get_priority());
 
   struct list_elem *e = list_max(&ready_list, compare_priority, NULL);
   struct thread *max = list_entry(e, struct thread, elem);
