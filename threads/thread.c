@@ -13,6 +13,7 @@
 #include "threads/vaddr.h"
 
 #include "lib/kernel/fixpoint.h"
+#include "devices/timer.h"
 
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -56,6 +57,10 @@ static long long user_ticks;   /* # of timer ticks in user programs. */
 /* Scheduling. */
 #define TIME_SLICE 4          /* # of timer ticks to give each thread. */
 static unsigned thread_ticks; /* # of timer ticks since last yield. */
+
+static int load_avg = FIXPOINT(0, 1);
+static int load_avg_prev_weight = FIXPOINT(59, 60); /*Peso que se le otorga a la carga anterior del cpu*/
+static int load_avg_cur_weight = FIXPOINT(1, 60);   /*Peso actual de la carga del procesador*/
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -125,6 +130,23 @@ void thread_start(void)
 void thread_tick(void)
 {
   struct thread *t = thread_current();
+  /*Actualizar load_avg*/
+  long long ticks = timer_ticks();
+  if (thread_mlfqs)
+  {
+    bool is_second = ticks % TIMER_FREQ == 0;
+    if (is_second)
+    {
+      int ready_threads = list_size(&ready_list);
+      if (t != idle_thread)
+      {
+        ready_threads++;
+      }
+      ready_threads = FIXPOINT(ready_threads, 1);
+      load_avg = FIXPOINT_PRODUCT(load_avg_prev_weight, load_avg) +
+                 FIXPOINT_PRODUCT(load_avg_cur_weight, ready_threads);
+    }
+  }
 
   /* Update statistics. */
   if (t == idle_thread)
@@ -373,7 +395,8 @@ int thread_get_nice(void)
 int thread_get_load_avg(void)
 {
   /* Not yet implemented. */
-  return 0;
+  int curr = FIXPOINT_PRODUCT(load_avg, FIXPOINT(100, 1));
+  return FIXPOINT_TO_INT(curr);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
