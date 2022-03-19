@@ -12,7 +12,6 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 
-#include "lib/kernel/fixpoint.h"
 #include "devices/timer.h"
 
 #ifdef USERPROG
@@ -58,9 +57,14 @@ static long long user_ticks;   /* # of timer ticks in user programs. */
 #define TIME_SLICE 4          /* # of timer ticks to give each thread. */
 static unsigned thread_ticks; /* # of timer ticks since last yield. */
 
-static int load_avg = FIXPOINT(0, 1);
-static int load_avg_prev_weight = FIXPOINT(59, 60); /*Peso que se le otorga a la carga anterior del cpu*/
-static int load_avg_cur_weight = FIXPOINT(1, 60);   /*Peso actual de la carga del procesador*/
+static const int load_avg_prev_weight = FIXPOINT(59, 60); /*Peso que se le otorga a la carga anterior del cpu*/
+static const int load_avg_cur_weight = FIXPOINT(1, 60);   /*Peso actual de la carga del procesador*/\
+static const int CERO_FP = FIXPOINT(0,1);
+static const int ONE_FP = FIXPOINT(1,1);
+static const int TWO_FP = FIXPOINT(2,1);
+static const int FOUR_FP = FIXPOINT(4,1);
+static int load_avg = CERO_FP ;
+
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -80,6 +84,8 @@ void thread_schedule_tail(struct thread *prev);
 static tid_t allocate_tid(void);
 
 bool thread_compare(const struct list_elem *e1, const struct list_elem *e2, void *aux UNUSED);
+static void update_recent_cpu(struct thread *t, void *aux UNUSED);
+static void update_priority(struct thread *t);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -130,13 +136,17 @@ void thread_start(void)
 void thread_tick(void)
 {
   struct thread *t = thread_current();
-  /*Actualizar load_avg*/
-  long long ticks = timer_ticks();
+  /*se aumenta el uso de cpu*/
+  if(t!= idle_thread)
+    t->recent_cpu += ONE_FP;
+
   if (thread_mlfqs)
   {
+    long long ticks = timer_ticks();
     bool is_second = ticks % TIMER_FREQ == 0;
     if (is_second)
     {
+      /*Actualizar load_avg*/
       int ready_threads = list_size(&ready_list);
       if (t != idle_thread)
       {
@@ -145,6 +155,10 @@ void thread_tick(void)
       ready_threads = FIXPOINT(ready_threads, 1);
       load_avg = FIXPOINT_PRODUCT(load_avg_prev_weight, load_avg) +
                  FIXPOINT_PRODUCT(load_avg_cur_weight, ready_threads);
+      /*Actualizar recent_cpu*/
+
+      thread_foreach(update_recent_cpu, NULL);
+
     }
   }
 
@@ -160,7 +174,41 @@ void thread_tick(void)
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
+  {
+    struct list_elem *e;
+    for (e = list_begin(&ready_list); e != list_end(&ready_list);
+         e = list_next(e))
+    {
+      struct thread *t = list_entry(e, struct thread, elem);
+      update_priority(t);
+    }
+    list_sort(&ready_list, thread_compare, NULL);
     intr_yield_on_return();
+  }
+}
+/*Actualiza el recent cpu de un proceso*/
+void update_recent_cpu(struct thread *t, void *aux UNUSED)
+{
+    int k = FIXPOINT_PRODUCT(load_avg, TWO_FP);
+    int thread_nice = FIXPOINT(t->nice,1);
+    int recent_cpu = t->recent_cpu;
+    int coeficient_recent_cpu = FIXPOINT_DIVISION(k, k + ONE_FP);
+    recent_cpu = FIXPOINT_PRODUCT(coeficient_recent_cpu, recent_cpu) + thread_nice;
+    t->recent_cpu = recent_cpu;
+  
+}
+
+void update_priority(struct thread *t)
+{
+  int recent_cpu = t->recent_cpu;
+  int prioridad = FIXPOINT(PRI_MAX,1) - FIXPOINT_DIVISION(recent_cpu, FOUR_FP);
+  int thread_nice = FIXPOINT(t->nice,1);
+  thread_nice = FIXPOINT_PRODUCT(TWO_FP, FIXPOINT(thread_nice, 1));
+  prioridad = FIXPOINT_TO_INT(prioridad - thread_nice);
+  if (prioridad < PRI_MIN)
+    prioridad = PRI_MIN;
+
+  t->priority = prioridad;
 }
 
 /* Prints thread statistics. */
@@ -379,16 +427,28 @@ int thread_get_priority(void)
 }
 
 /* Sets the current thread's nice value to NICE. */
-void thread_set_nice(int nice UNUSED)
+void thread_set_nice(int nice)
 {
-  /* Not yet implemented. */
+  struct thread *t = thread_current();
+  int new_nice = nice;
+  if (new_nice < -20)
+    new_nice = -20;
+
+  if (new_nice > 20)
+    new_nice = 20;
+  t->nice = new_nice;
+  update_priority(t);
+  struct list_elem *e;
+  e = list_begin(&ready_list);
+  struct thread *next = list_entry(e, struct thread, elem);
+  if(next->priority > t->priority)
+    thread_yield();
 }
 
 /* Returns the current thread's nice value. */
 int thread_get_nice(void)
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
@@ -402,8 +462,9 @@ int thread_get_load_avg(void)
 /* Returns 100 times the current thread's recent_cpu value. */
 int thread_get_recent_cpu(void)
 {
-  /* Not yet implemented. */
-  return 0;
+  int recent_cpu = thread_current()->recent_cpu;
+  recent_cpu = FIXPOINT_PRODUCT(recent_cpu, FIXPOINT(100, 1));
+  return FIXPOINT_TO_INT(recent_cpu);
 }
 
 bool thread_compare(const struct list_elem *e1, const struct list_elem *e2, void *aux UNUSED)
@@ -503,7 +564,13 @@ init_thread(struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *)t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  t->recent_cpu = CERO_FP ;
   list_push_back(&all_list, &t->allelem);
+  if(t!=initial_thread)
+    t->nice = thread_current()->nice;
+  else
+    t->nice = 0;
+  
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
