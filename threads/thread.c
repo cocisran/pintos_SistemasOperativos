@@ -155,8 +155,8 @@ void thread_tick(void)
       ready_threads = FIXPOINT(ready_threads, 1);
       load_avg = FIXPOINT_PRODUCT(load_avg_prev_weight, load_avg) +
                  FIXPOINT_PRODUCT(load_avg_cur_weight, ready_threads);
+                 
       /*Actualizar recent_cpu*/
-
       thread_foreach(update_recent_cpu, NULL);
     }
     /*Recalcular prioridad*/
