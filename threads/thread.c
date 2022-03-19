@@ -58,7 +58,7 @@ static long long user_ticks;   /* # of timer ticks in user programs. */
 static unsigned thread_ticks; /* # of timer ticks since last yield. */
 
 static const int load_avg_prev_weight = FIXPOINT(59, 60); /*Peso que se le otorga a la carga anterior del cpu*/
-static const int load_avg_cur_weight = FIXPOINT(1, 60);   /*Peso actual de la carga del procesador*/\
+static const int load_avg_cur_weight = FIXPOINT(1, 60);   /*Peso actual de la carga del procesador*/
 static const int CERO_FP = FIXPOINT(0,1);
 static const int ONE_FP = FIXPOINT(1,1);
 static const int TWO_FP = FIXPOINT(2,1);
