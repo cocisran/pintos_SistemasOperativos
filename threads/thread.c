@@ -85,7 +85,7 @@ static tid_t allocate_tid(void);
 
 bool thread_compare(const struct list_elem *e1, const struct list_elem *e2, void *aux UNUSED);
 static void update_recent_cpu(struct thread *t, void *aux UNUSED);
-static void update_priority(struct thread *t);
+static void update_priority(struct thread *t, void *aux UNUSED);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -135,6 +135,7 @@ void thread_start(void)
    Thus, this function runs in an external interrupt context. */
 void thread_tick(void)
 {
+  long long ticks = timer_ticks();
   struct thread *t = thread_current();
   /*se aumenta el uso de cpu*/
   if(t!= idle_thread)
@@ -142,7 +143,6 @@ void thread_tick(void)
 
   if (thread_mlfqs)
   {
-    long long ticks = timer_ticks();
     bool is_second = ticks % TIMER_FREQ == 0;
     if (is_second)
     {
@@ -172,17 +172,15 @@ void thread_tick(void)
   else
     kernel_ticks++;
 
+  if(ticks %4 == 0)
+  {
+    thread_foreach(update_priority, NULL);
+    list_sort(&ready_list, thread_compare, NULL);
+  }
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
   {
-    struct list_elem *e;
-    for (e = list_begin(&ready_list); e != list_end(&ready_list);
-         e = list_next(e))
-    {
-      struct thread *t = list_entry(e, struct thread, elem);
-      update_priority(t);
-    }
-    list_sort(&ready_list, thread_compare, NULL);
+
     intr_yield_on_return();
   }
 }
@@ -197,8 +195,8 @@ void update_recent_cpu(struct thread *t, void *aux UNUSED)
     t->recent_cpu = recent_cpu;
   
 }
-
-void update_priority(struct thread *t)
+/*Actualiza la prioridad de un hilo*/
+void update_priority(struct thread *t, void *aux UNUSED)
 {
   int recent_cpu = t->recent_cpu;
   int prioridad = FIXPOINT(PRI_MAX,1) - FIXPOINT_DIVISION(recent_cpu, FOUR_FP);
@@ -437,7 +435,7 @@ void thread_set_nice(int nice)
   if (new_nice > 20)
     new_nice = 20;
   t->nice = new_nice;
-  update_priority(t);
+  update_priority(t,NULL);
   struct list_elem *e;
   e = list_begin(&ready_list);
   struct thread *next = list_entry(e, struct thread, elem);
