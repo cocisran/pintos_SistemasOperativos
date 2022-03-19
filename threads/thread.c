@@ -158,7 +158,12 @@ void thread_tick(void)
       /*Actualizar recent_cpu*/
 
       thread_foreach(update_recent_cpu, NULL);
-
+    }
+    /*Recalcular prioridad*/
+    if(ticks %4 == 0)
+    {
+      thread_foreach(update_priority, NULL);
+      list_sort(&ready_list, thread_compare, NULL);
     }
   }
 
@@ -172,11 +177,6 @@ void thread_tick(void)
   else
     kernel_ticks++;
 
-  if(ticks %4 == 0)
-  {
-    thread_foreach(update_priority, NULL);
-    list_sort(&ready_list, thread_compare, NULL);
-  }
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
   {
@@ -199,12 +199,16 @@ void update_recent_cpu(struct thread *t, void *aux UNUSED)
 void update_priority(struct thread *t, void *aux UNUSED)
 {
   int recent_cpu = t->recent_cpu;
-  int prioridad = FIXPOINT(PRI_MAX,1) - FIXPOINT_DIVISION(recent_cpu, FOUR_FP);
   int thread_nice = FIXPOINT(t->nice,1);
-  thread_nice = FIXPOINT_PRODUCT(TWO_FP, FIXPOINT(thread_nice, 1));
-  prioridad = FIXPOINT_TO_INT(prioridad - thread_nice);
+  int prioridad = FIXPOINT(PRI_MAX,1) - FIXPOINT_DIVISION(recent_cpu, FOUR_FP);
+ 
+  thread_nice = FIXPOINT_PRODUCT(TWO_FP,thread_nice);
+  prioridad = prioridad - thread_nice;
+  prioridad = FIXPOINT_TO_INT(prioridad);
   if (prioridad < PRI_MIN)
     prioridad = PRI_MIN;
+  if(prioridad > PRI_MAX)
+    prioridad = PRI_MAX;
 
   t->priority = prioridad;
 }
@@ -428,18 +432,17 @@ int thread_get_priority(void)
 void thread_set_nice(int nice)
 {
   struct thread *t = thread_current();
+  int curr_nice = t->nice;
   int new_nice = nice;
+
   if (new_nice < -20)
     new_nice = -20;
-
-  if (new_nice > 20)
+  else if (new_nice > 20)
     new_nice = 20;
+  
   t->nice = new_nice;
   update_priority(t,NULL);
-  struct list_elem *e;
-  e = list_begin(&ready_list);
-  struct thread *next = list_entry(e, struct thread, elem);
-  if(next->priority > t->priority)
+  if(new_nice > curr_nice)
     thread_yield();
 }
 
