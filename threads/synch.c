@@ -32,6 +32,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+static bool compare_sema(const struct list_elem* e1, const struct list_elem *e2, void* aux UNUSED);
+static bool compare_cond(const struct list_elem* e1, const struct list_elem *e2, void* aux UNUSED);
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -68,7 +71,7 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
+      list_insert_ordered (&sema->waiters, &thread_current ()->elem, compare_sema, NULL);
       thread_block ();
     }
   sema->value--;
@@ -109,23 +112,24 @@ void
 sema_up (struct semaphore *sema) 
 {
   enum intr_level old_level;
-  bool yield = false;
 
   ASSERT (sema != NULL);
 
+  bool yield = false;
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) {
-		struct thread* t = list_entry (list_pop_front (&sema->waiters), struct thread, elem);
+    struct thread* t = list_entry (list_pop_front (&sema->waiters), struct thread, elem);
     thread_unblock (t);
-    
+
     if(t->priority > thread_current()->priority)
-			yield = true;
+      yield = true;
   }
+
   sema->value++;
   intr_set_level (old_level);
-  
+
   if(yield)
-		thread_yield();
+    thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
@@ -324,9 +328,12 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-  if (!list_empty (&cond->waiters)) 
-    sema_up (&list_entry (list_pop_front (&cond->waiters),
-                          struct semaphore_elem, elem)->semaphore);
+  if (!list_empty (&cond->waiters)) {
+    struct list_elem* max = list_max(&cond->waiters, compare_cond, NULL);
+    list_remove(max);
+
+    sema_up(&list_entry(max, struct semaphore_elem, elem)->semaphore);
+  }
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -343,4 +350,23 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 
   while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
+}
+
+static bool
+compare_sema(const struct list_elem* e1, const struct list_elem *e2, void* aux UNUSED){
+  struct thread* t1 = list_entry(e1, struct thread, elem);
+  struct thread* t2 = list_entry(e2, struct thread, elem);
+
+  return t1->priority > t2->priority;
+}
+
+static bool
+compare_cond(const struct list_elem* e1, const struct list_elem *e2, void* aux UNUSED){
+  struct semaphore_elem* s1 = list_entry(e1, struct semaphore_elem, elem);
+  struct semaphore_elem* s2 = list_entry(e2, struct semaphore_elem, elem);
+
+  struct thread* t1 = list_entry(list_front(&(s1->semaphore.waiters)), struct thread, elem);
+  struct thread* t2 = list_entry(list_front(&(s2->semaphore.waiters)), struct thread, elem);
+
+  return t1->priority < t2->priority;
 }
