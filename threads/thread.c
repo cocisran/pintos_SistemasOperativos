@@ -59,12 +59,11 @@ static unsigned thread_ticks; /* # of timer ticks since last yield. */
 
 static const int load_avg_prev_weight = FIXPOINT(59, 60); /*Peso que se le otorga a la carga anterior del cpu*/
 static const int load_avg_cur_weight = FIXPOINT(1, 60);   /*Peso actual de la carga del procesador*/
-static const int CERO_FP = FIXPOINT(0,1);
-static const int ONE_FP = FIXPOINT(1,1);
-static const int TWO_FP = FIXPOINT(2,1);
-static const int FOUR_FP = FIXPOINT(4,1);
-static int load_avg = CERO_FP ;
-
+static const int CERO_FP = FIXPOINT(0, 1);
+static const int ONE_FP = FIXPOINT(1, 1);
+static const int TWO_FP = FIXPOINT(2, 1);
+static const int FOUR_FP = FIXPOINT(4, 1);
+static int load_avg = CERO_FP;
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -135,14 +134,16 @@ void thread_start(void)
    Thus, this function runs in an external interrupt context. */
 void thread_tick(void)
 {
-  long long ticks = timer_ticks();
+
   struct thread *t = thread_current();
-  /*se aumenta el uso de cpu*/
-  if(t!= idle_thread)
-    t->recent_cpu += ONE_FP;
 
   if (thread_mlfqs)
   {
+    long long ticks = timer_ticks();
+    /*se aumenta el uso de cpu*/
+    if (t != idle_thread)
+      t->recent_cpu += ONE_FP;
+
     bool is_second = ticks % TIMER_FREQ == 0;
     if (is_second)
     {
@@ -155,12 +156,12 @@ void thread_tick(void)
       ready_threads = FIXPOINT(ready_threads, 1);
       load_avg = FIXPOINT_PRODUCT(load_avg_prev_weight, load_avg) +
                  FIXPOINT_PRODUCT(load_avg_cur_weight, ready_threads);
-                 
+
       /*Actualizar recent_cpu*/
       thread_foreach(update_recent_cpu, NULL);
     }
     /*Recalcular prioridad*/
-    if(ticks %4 == 0)
+    if (ticks % 4 == 0)
     {
       thread_foreach(update_priority, NULL);
       list_sort(&ready_list, thread_compare, NULL);
@@ -187,27 +188,26 @@ void thread_tick(void)
 /*Actualiza el recent cpu de un proceso*/
 void update_recent_cpu(struct thread *t, void *aux UNUSED)
 {
-    int k = FIXPOINT_PRODUCT(load_avg, TWO_FP);
-    int thread_nice = FIXPOINT(t->nice,1);
-    int recent_cpu = t->recent_cpu;
-    int coeficient_recent_cpu = FIXPOINT_DIVISION(k, k + ONE_FP);
-    recent_cpu = FIXPOINT_PRODUCT(coeficient_recent_cpu, recent_cpu) + thread_nice;
-    t->recent_cpu = recent_cpu;
-  
+  int k = FIXPOINT_PRODUCT(load_avg, TWO_FP);
+  int thread_nice = FIXPOINT(t->nice, 1);
+  int recent_cpu = t->recent_cpu;
+  int coeficient_recent_cpu = FIXPOINT_DIVISION(k, k + ONE_FP);
+  recent_cpu = FIXPOINT_PRODUCT(coeficient_recent_cpu, recent_cpu) + thread_nice;
+  t->recent_cpu = recent_cpu;
 }
 /*Actualiza la prioridad de un hilo*/
 void update_priority(struct thread *t, void *aux UNUSED)
 {
   int recent_cpu = t->recent_cpu;
-  int thread_nice = FIXPOINT(t->nice,1);
-  int prioridad = FIXPOINT(PRI_MAX,1) - FIXPOINT_DIVISION(recent_cpu, FOUR_FP);
- 
-  thread_nice = FIXPOINT_PRODUCT(TWO_FP,thread_nice);
+  int thread_nice = FIXPOINT(t->nice, 1);
+  int prioridad = FIXPOINT(PRI_MAX, 1) - FIXPOINT_DIVISION(recent_cpu, FOUR_FP);
+
+  thread_nice = FIXPOINT_PRODUCT(TWO_FP, thread_nice);
   prioridad = prioridad - thread_nice;
   prioridad = FIXPOINT_TO_INT(prioridad);
   if (prioridad < PRI_MIN)
     prioridad = PRI_MIN;
-  if(prioridad > PRI_MAX)
+  if (prioridad > PRI_MAX)
     prioridad = PRI_MAX;
 
   t->priority = prioridad;
@@ -413,13 +413,22 @@ void thread_foreach(thread_action_func *func, void *aux)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
+
   struct thread *t = thread_current();
-  int old_priority = t->priority;
 
-  t->priority = new_priority;
+  if (t->old_priority == -1)
+  {
+    int old_priority = t->priority;
 
-  if (old_priority > new_priority)
-    thread_yield();
+    t->priority = new_priority;
+
+    if (old_priority > new_priority)
+      thread_yield();
+  }
+  else
+  {
+    t->old_priority = new_priority;
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -439,10 +448,10 @@ void thread_set_nice(int nice)
     new_nice = -20;
   else if (new_nice > 20)
     new_nice = 20;
-  
+
   t->nice = new_nice;
-  update_priority(t,NULL);
-  if(new_nice > curr_nice)
+  update_priority(t, NULL);
+  if (new_nice > curr_nice)
     thread_yield();
 }
 
@@ -565,13 +574,14 @@ init_thread(struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *)t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-  t->recent_cpu = CERO_FP ;
+  t->recent_cpu = CERO_FP;
   list_push_back(&all_list, &t->allelem);
-  if(t!=initial_thread)
+  if (t != initial_thread)
     t->nice = thread_current()->nice;
   else
     t->nice = 0;
-  
+  t->old_priority = -1;
+  t->donations = 0;
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
