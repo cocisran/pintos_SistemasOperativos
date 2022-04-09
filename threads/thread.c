@@ -416,7 +416,7 @@ void thread_set_priority(int new_priority)
 
   struct thread *t = thread_current();
 
-  if (t->old_priority == -1 )
+  if (t->old_priority == -1)
   {
     int old_priority = t->priority;
 
