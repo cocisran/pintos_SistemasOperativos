@@ -186,6 +186,8 @@ void lock_init(struct lock *lock)
 
   lock->holder = NULL;
   lock->holder_initial_priority = -1;
+  lock->times_donated_to_holder = 0;
+  lock->max_donation_in_lock = 0;
   sema_init(&lock->semaphore, 1);
 }
 
@@ -213,7 +215,10 @@ void lock_acquire(struct lock *lock)
 
     if (lock->holder_initial_priority == -1) /*Respaldamos prioridad con que entro al lock*/
       lock->holder_initial_priority = lock->holder->priority;
+
     /*Donacion*/
+    if (lock->max_donation_in_lock < t->priority)
+      lock->max_donation_in_lock = t->priority;
     lock->holder->priority = t->priority;
   }
   sema_down(&lock->semaphore);
@@ -251,15 +256,19 @@ void lock_release(struct lock *lock)
   lock->holder->donations -= lock->times_donated_to_holder;
   lock->times_donated_to_holder = 0;
   /*Prioridad a restaurar*/
-  if (lock->holder->donations == 0 && lock->holder->old_priority != -1)
+
+  if (lock->holder->donations == 0 && lock->holder_initial_priority != -1)
   { /*Original*/
     lock->holder->priority = lock->holder->old_priority;
     lock->holder->old_priority = -1;
   }
   else if (lock->holder_initial_priority != -1)
   { /*la de entrar al holder*/
-    lock->holder->priority = lock->holder_initial_priority;
+    /*Solo se restaura si fue en este lock que ocurrio la donacion de nuestra prioridad*/
+    if (lock->max_donation_in_lock == lock->holder->priority)
+      lock->holder->priority = lock->holder_initial_priority;
   }
+  lock->max_donation_in_lock = 0;
   lock->holder_initial_priority = -1;
   lock->holder = NULL;
   sema_up(&lock->semaphore);
