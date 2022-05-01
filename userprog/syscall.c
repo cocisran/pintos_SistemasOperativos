@@ -15,13 +15,12 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-   uint32_t* esp = f->esp;
+  uint32_t* esp = f->esp;
   uint32_t syscall = *esp;
   esp++;
-  
   switch(syscall) {
     case SYS_WRITE: {
-      int fd = *esp;
+      int fd = *esp; 
       esp++;
       void* buffer = (void*)*esp;
       esp++;
@@ -31,8 +30,22 @@ syscall_handler (struct intr_frame *f UNUSED)
       
       break;
     }
+    case SYS_EXEC:{
+      char* cmd = (char*) *esp; 
+      int call_return = process_execute (cmd);
+      f->eax = call_return;
+      break;
+    }
+    case SYS_WAIT:{
+      tid_t child = *esp;
+      f->eax =  process_wait(child);
+      break;
+    }
     case SYS_EXIT: {
-      printf("%s: exit(0)\n", thread_current()->name);
+      int status = *esp;
+      struct thread *t = thread_current();
+      t->exit_status = status;
+      printf("%s: exit(%d)\n", t->name,status);
       thread_exit ();
       break;
     }

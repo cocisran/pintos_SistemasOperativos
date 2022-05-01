@@ -18,10 +18,19 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "devices/timer.h"
+#include "threads/malloc.h"
+struct process {
+    tid_t tid;
+    struct thread* t;
+    int exit_status;
+    struct list_elem elem;
+};
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void* put_args(char* command, int size);
+static void add_son_process(tid_t tid,struct thread* t, int exit_status);
+struct process* get_son_son_process(struct thread* f,tid_t tid);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -42,8 +51,17 @@ process_execute (const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  if (tid == TID_ERROR){
+    palloc_free_page (fn_copy);
+  }
+  else{
+  //Si el hilo se creo esperamos a que se complete la creacion del proceso
+    struct thread *t = thread_current();
+    sema_down(&t->wait_creation);
+    struct process *p = get_son_son_process(t,tid);
+    if(p->exit_status == -1)
+      tid = TID_ERROR;
+  }
   return tid;
 }
 
@@ -74,6 +92,13 @@ start_process (void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
 
+  //Informar al padre del estado de carga
+  struct thread *t =thread_current();
+  struct thread *f = t->father;
+  int exit_status = success? 0 :-1;
+  add_son_process(t->tid,t,exit_status);
+  sema_up(&f->wait_creation);
+
   /* If load failed, quit. */
   
   if (!success) 
@@ -95,6 +120,37 @@ start_process (void *file_name_)
   NOT_REACHED ();
 }
 
+
+/*Agrega la informacion administrativa del hijo a lista de hijos
+del proceso padre
+tid identificador del hijo
+t referencia a la estructura thread del hijo
+exit_status estado de salida*/
+void
+add_son_process(tid_t tid,struct thread* t, int exit_status){
+  struct thread *f = thread_current()->father;
+  struct process* p = (struct process*)malloc(sizeof(struct process));
+  p->tid = tid;
+  p->t = t;
+  p->exit_status = exit_status;
+  t->exit_status = exit_status;
+  list_push_back (&f->sons_list, &p->elem);
+}
+
+/*Funcion que dado un identificador hijo retorna su estructura 
+administrativa de proceso*/
+struct process* get_son_son_process(struct thread* f,tid_t tid){
+  struct list_elem *e;
+  for (e = list_begin (&f->sons_list); e != list_end (&f->sons_list);
+       e = list_next (e))
+    {
+      struct process *p = list_entry (e, struct process, elem);
+      if(tid == p->tid)
+        return p;
+    }
+  return NULL;
+}
+
 /* Waits for thread TID to die and returns its exit status.  If
    it was terminated by the kernel (i.e. killed due to an
    exception), returns -1.  If TID is invalid or if it was not a
@@ -105,9 +161,22 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-	timer_sleep(200);
+  //Obtener el semaforo del hijo:
+  struct thread *t = thread_current();
+  struct process *p = get_son_son_process(t,child_tid);
+  if(p!=NULL){
+    struct thread *child = p->t;
+    if(child != NULL){
+      sema_down(&child->wait);
+    }
+    int exit = p->exit_status;
+    //Este borrado se hace para que llamadas consiguientes regresen 
+    //-1
+    list_remove (&p->elem);
+    return exit;
+  }
   return -1;
 }
 
@@ -117,7 +186,10 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-
+  //Actualizar su estructura administrativa en la lista de hijos
+  struct process *p = get_son_son_process(cur->father,cur->tid);
+  p->exit_status = cur->exit_status;
+  sema_up(&cur->wait);
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;

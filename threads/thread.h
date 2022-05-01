@@ -4,6 +4,8 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
+
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -96,6 +98,12 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    struct semaphore wait_creation;    /*Semaforo para la espera de creacion de proceso*/
+    struct semaphore wait;             /*Semaforo usado para modelar la espera de la llamada
+                                       wait del sistema*/
+    int exit_status;                   /*valor con el que se borrara el hilo*/
+    struct thread *father;             /*Proceso que creo este hilo (menos para el thread inicial*/
+    struct list sons_list;             /*Lista de procesos que fueron creados por este hilo*/
 #endif
 
     /* Owned by thread.c. */
