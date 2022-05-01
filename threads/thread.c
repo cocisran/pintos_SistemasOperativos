@@ -471,14 +471,11 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
   //para llamadas al sistema
-
   list_init (&t->sons_list);
   if(t != initial_thread){
     struct thread *f = thread_current();
     t->father = f;
-    //El padre debe esperar sobre este semaforo la creacion del proceso
     sema_init(&f->wait_creation,0);
-    //Semaforo para wait
     sema_init(&t->wait,0);
     t->exit_status = 0;
   }

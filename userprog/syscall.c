@@ -15,12 +15,12 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-   uint32_t* esp = f->esp;
+  uint32_t* esp = f->esp;
   uint32_t syscall = *esp;
   esp++;
   switch(syscall) {
     case SYS_WRITE: {
-      int fd = *esp; // Esto será importane despues OJITO es el apuntador al stack
+      int fd = *esp; 
       esp++;
       void* buffer = (void*)*esp;
       esp++;
@@ -31,7 +31,7 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
     }
     case SYS_EXEC:{
-      char* cmd = (char*) *esp; //Obtienes el programa a ejecutar
+      char* cmd = (char*) *esp; 
       int call_return = process_execute (cmd);
       f->eax = call_return;
       break;
@@ -41,13 +41,11 @@ syscall_handler (struct intr_frame *f UNUSED)
       f->eax =  process_wait(child);
       break;
     }
-    //wait agregar llamada al semaforo del padre
     case SYS_EXIT: {
       int status = *esp;
       struct thread *t = thread_current();
       t->exit_status = status;
       printf("%s: exit(%d)\n", t->name,status);
-      //Aqui se le debe informar al padre con que valor salio su hijo
       thread_exit ();
       break;
     }

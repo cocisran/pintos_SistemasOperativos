@@ -62,8 +62,6 @@ process_execute (const char *file_name)
     if(p->exit_status == -1)
       tid = TID_ERROR;
   }
-  /*Aqui usar una variable compartida para verificar que un proceso haya cargado con
-  exito su proceso*/
   return tid;
 }
 
@@ -165,8 +163,6 @@ struct process* get_son_son_process(struct thread* f,tid_t tid){
 int
 process_wait (tid_t child_tid) 
 {
-  //Aqui se le hace sema down al semaforo del proceso que llama
-
   //Obtener el semaforo del hijo:
   struct thread *t = thread_current();
   struct process *p = get_son_son_process(t,child_tid);
@@ -176,6 +172,8 @@ process_wait (tid_t child_tid)
       sema_down(&child->wait);
     }
     int exit = p->exit_status;
+    //Este borrado se hace para que llamadas consiguientes regresen 
+    //-1
     list_remove (&p->elem);
     return exit;
   }
@@ -188,7 +186,7 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-  //Actualizar su estructura administrativa
+  //Actualizar su estructura administrativa en la lista de hijos
   struct process *p = get_son_son_process(cur->father,cur->tid);
   p->exit_status = cur->exit_status;
   sema_up(&cur->wait);

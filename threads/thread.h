@@ -103,7 +103,7 @@ struct thread
                                        wait del sistema*/
     int exit_status;                   /*valor con el que se borrara el hilo*/
     struct thread *father;             /*Proceso que creo este hilo (menos para el thread inicial*/
-    struct list sons_list;             /*Procesos que fueron creados por este hilo*/
+    struct list sons_list;             /*Lista de procesos que fueron creados por este hilo*/
 #endif
 
     /* Owned by thread.c. */
