@@ -55,7 +55,7 @@ process_execute (const char *file_name)
     palloc_free_page (fn_copy);
   }
   else{
-  //   //Si el hilo se creo esperamos a que se complete la creacion del proceso
+  //Si el hilo se creo esperamos a que se complete la creacion del proceso
     struct thread *t = thread_current();
     sema_down(&t->wait_creation);
     struct process *p = get_son_son_process(t,tid);
@@ -94,14 +94,13 @@ start_process (void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
 
+  //Informar al padre del estado de carga
   struct thread *t =thread_current();
   struct thread *f = t->father;
-  // printf("Mi padre es: %s \n",t->name);
-  // printf("Yo soy: %s \n",f->name);
-  //Informar al padre del estado de carga
   int exit_status = success? 0 :-1;
   add_son_process(t->tid,t,exit_status);
   sema_up(&f->wait_creation);
+
   /* If load failed, quit. */
   
   if (!success) 
@@ -136,6 +135,7 @@ add_son_process(tid_t tid,struct thread* t, int exit_status){
   p->tid = tid;
   p->t = t;
   p->exit_status = exit_status;
+  t->exit_status = exit_status;
   list_push_back (&f->sons_list, &p->elem);
 }
 
