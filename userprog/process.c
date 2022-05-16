@@ -19,6 +19,8 @@
 #include "threads/vaddr.h"
 #include "devices/timer.h"
 #include "threads/malloc.h"
+
+#include "vm/frame.h"
 struct process {
     tid_t tid;
     struct thread* t;

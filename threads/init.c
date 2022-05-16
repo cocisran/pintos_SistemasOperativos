@@ -24,6 +24,7 @@
 #include "threads/pte.h"
 #include "threads/thread.h"
 #ifdef USERPROG
+
 #include "userprog/process.h"
 #include "userprog/exception.h"
 #include "userprog/gdt.h"
@@ -37,6 +38,10 @@
 #include "devices/ide.h"
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
+#endif
+
+#ifdef VM
+#include "vm/frame.h"
 #endif
 
 /* Page directory with kernel mappings only. */
@@ -101,6 +106,9 @@ main (void)
   palloc_init (user_page_limit);
   malloc_init ();
   paging_init ();
+#ifdef VM
+  frame_init ();
+#endif
   /* Segmentation. */
 #ifdef USERPROG
   tss_init ();
